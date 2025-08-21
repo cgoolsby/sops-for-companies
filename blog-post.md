@@ -2,6 +2,8 @@
 
 *How to build a scalable, secure, and auditable secrets management system using SOPS, age encryption, and GitHub Actions*
 
+> 📦 **Full implementation available**: All code, scripts, and examples from this post are available at [github.com/cgoolsby/sops-for-companies](https://github.com/cgoolsby/sops-for-companies)
+
 ---
 
 ## Introduction
@@ -626,7 +628,7 @@ Remember: the best secrets management system is one that your team will actually
 
 ### Get Started
 
-1. Clone the repository: [github.com/yourcompany/sops-for-companies](https://github.com/yourcompany/sops-for-companies)
+1. Clone the repository: [github.com/cgoolsby/sops-for-companies](https://github.com/cgoolsby/sops-for-companies)
 2. Install prerequisites:
    ```bash
    # macOS
