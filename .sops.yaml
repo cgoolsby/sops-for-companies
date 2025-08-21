@@ -1,0 +1,65 @@
+# SOPS Configuration with Key Groups using YAML Anchors
+# This file defines encryption rules and key groups for the organization
+
+# Define reusable key groups using YAML anchors
+keys:
+  # Developer keys - can decrypt development secrets
+  developers: &developers
+    - &alice_key age1da3u58jlwx8pjzrcynpzgff79y8w0qem5scqrd5yy8m5sj2tvscs4sfnnn
+    - &bob_key age1uk2qjwhywha0ap02unmlzzft7wwqw3sy2dms3tg63t3q7h5geegsae7h47
+    - &carol_key age1grelxvlcv2ypeh68ecrltltyu96wntzk9mcnjjt3lnw3xmr35djqdc0y0p
+  
+  # Administrator keys - can decrypt all secrets
+  administrators: &administrators
+    - &admin1_key age1lj8fvkr559xgl44nzn0dsyq77sqsf33sgtu0k7k5tzhytrzzf40qdpgdjh
+    - &admin2_key age1t7mpsg5zh9h225jc642rqa8jg6aszqtshj6lvxpgx9qwnwnugvjqezlljf
+  
+  # CI/CD keys - GitHub Actions service account
+  ci: &ci
+    - &github_actions_key age1ezq49xdmurgdpv7yc4ey6dc5tvptnrj24g8kqtcns6hnljwu6e6sv6m5pw
+
+# Creation rules for different secret paths
+creation_rules:
+  # Development secrets - accessible by developers and administrators
+  - path_regex: secrets/dev/.*\.enc\.yaml$
+    key_groups:
+      - age:
+          - *alice_key
+          - *bob_key
+          - *carol_key
+          - *admin1_key
+          - *admin2_key
+          - *github_actions_key
+  
+  # Staging secrets - administrators and CI only
+  - path_regex: secrets/staging/.*\.enc\.yaml$
+    key_groups:
+      - age:
+          - *admin1_key
+          - *admin2_key
+          - *github_actions_key
+  
+  # Production secrets - administrators only, CI for deployment
+  - path_regex: secrets/production/.*\.enc\.yaml$
+    key_groups:
+      - age:
+          - *admin1_key
+          - *admin2_key
+          - *github_actions_key
+  
+  # Example secrets - accessible by everyone for testing
+  - path_regex: examples/.*\.enc\.yaml$
+    key_groups:
+      - age:
+          - *alice_key
+          - *bob_key
+          - *carol_key
+          - *admin1_key
+          - *admin2_key
+  
+  # Default rule for any other encrypted yaml files
+  - path_regex: \.enc\.yaml$
+    key_groups:
+      - age:
+          - *admin1_key
+          - *admin2_key

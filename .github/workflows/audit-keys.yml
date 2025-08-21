@@ -1,0 +1,245 @@
+name: Audit Keys
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Audit SOPS Keys
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install required tools
+        run: |
+          # Install yq for YAML processing
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # Install jq for JSON processing
+          sudo apt-get update && sudo apt-get install -y jq
+      
+      - name: Parse key configuration
+        id: parse_keys
+        run: |
+          echo "Parsing .sops.yaml for key information..."
+          
+          # Extract all keys with their groups
+          echo "## Key Inventory" > audit_report.md
+          echo "" >> audit_report.md
+          
+          # Count keys by group
+          dev_count=$(grep -c "&.*_key age1" .sops.yaml | grep -A100 "developers:" | grep -c "age1" || echo "0")
+          admin_count=$(grep -c "&.*_key age1" .sops.yaml | grep -A100 "administrators:" | grep -c "age1" || echo "0")
+          ci_count=$(grep -c "&.*_key age1" .sops.yaml | grep -A100 "ci:" | grep -c "age1" || echo "0")
+          
+          echo "developers=$dev_count" >> $GITHUB_OUTPUT
+          echo "administrators=$admin_count" >> $GITHUB_OUTPUT
+          echo "ci=$ci_count" >> $GITHUB_OUTPUT
+          
+          total_keys=$(grep -c "&.*_key age1" .sops.yaml || echo "0")
+          echo "total=$total_keys" >> $GITHUB_OUTPUT
+      
+      - name: Check key usage
+        run: |
+          echo "### Key Usage Analysis" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Check which keys are actually used in creation rules
+          echo "#### Keys in Creation Rules" >> audit_report.md
+          echo "\`\`\`" >> audit_report.md
+          grep "\*.*_key" .sops.yaml | sort -u >> audit_report.md
+          echo "\`\`\`" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Find unused keys (defined but not referenced)
+          echo "#### Potentially Unused Keys" >> audit_report.md
+          defined_keys=$(grep -o "&[a-z0-9_]*_key" .sops.yaml | sed 's/&//' | sort -u)
+          used_keys=$(grep -o "\*[a-z0-9_]*_key" .sops.yaml | sed 's/\*//' | sort -u)
+          
+          unused_found=false
+          for key in $defined_keys; do
+            if ! echo "$used_keys" | grep -q "^$key$"; then
+              echo "- $key (defined but not used in any creation rule)" >> audit_report.md
+              unused_found=true
+            fi
+          done
+          
+          if [ "$unused_found" = false ]; then
+            echo "✅ All defined keys are being used" >> audit_report.md
+          fi
+          echo "" >> audit_report.md
+      
+      - name: Check for duplicate keys
+        run: |
+          echo "### Duplicate Key Check" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Check for duplicate age public keys
+          duplicates=$(grep -o 'age1[a-z0-9]\{58\}' .sops.yaml | sort | uniq -d)
+          
+          if [ -n "$duplicates" ]; then
+            echo "⚠️ **WARNING: Duplicate keys found!**" >> audit_report.md
+            echo "\`\`\`" >> audit_report.md
+            echo "$duplicates" >> audit_report.md
+            echo "\`\`\`" >> audit_report.md
+          else
+            echo "✅ No duplicate keys found" >> audit_report.md
+          fi
+          echo "" >> audit_report.md
+      
+      - name: Analyze access patterns
+        run: |
+          echo "### Access Pattern Analysis" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Count secrets by environment
+          dev_secrets=$(find secrets/dev -name "*.enc.yaml" 2>/dev/null | wc -l || echo "0")
+          staging_secrets=$(find secrets/staging -name "*.enc.yaml" 2>/dev/null | wc -l || echo "0")
+          prod_secrets=$(find secrets/production -name "*.enc.yaml" 2>/dev/null | wc -l || echo "0")
+          
+          echo "#### Secret Distribution" >> audit_report.md
+          echo "- Development: $dev_secrets secrets" >> audit_report.md
+          echo "- Staging: $staging_secrets secrets" >> audit_report.md
+          echo "- Production: $prod_secrets secrets" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Analyze who has access to what
+          echo "#### Access Summary" >> audit_report.md
+          echo "- Developers: Access to development secrets only" >> audit_report.md
+          echo "- Administrators: Access to all environments" >> audit_report.md
+          echo "- CI/CD: Access to all environments (deployment only)" >> audit_report.md
+          echo "" >> audit_report.md
+      
+      - name: Check key files
+        run: |
+          echo "### Key File Audit" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Check for orphaned key files
+          echo "#### Key Files on Disk" >> audit_report.md
+          for group in developers administrators ci; do
+            if [ -d "keys/$group" ]; then
+              file_count=$(find "keys/$group" -name "*.age" -type f 2>/dev/null | wc -l || echo "0")
+              echo "- $group: $file_count key file(s)" >> audit_report.md
+              
+              # Check if files match configuration
+              for keyfile in keys/$group/*.age; do
+                if [ -f "$keyfile" ]; then
+                  key_content=$(cat "$keyfile")
+                  basename=$(basename "$keyfile" .age)
+                  if ! grep -q "$key_content" .sops.yaml; then
+                    echo "  ⚠️ $keyfile not in .sops.yaml configuration" >> audit_report.md
+                  fi
+                fi
+              done
+            fi
+          done
+          echo "" >> audit_report.md
+      
+      - name: Security recommendations
+        run: |
+          echo "### Security Recommendations" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Check key rotation age (placeholder - would need git history analysis)
+          echo "#### Key Rotation" >> audit_report.md
+          echo "- [ ] Review and rotate keys older than 90 days" >> audit_report.md
+          echo "- [ ] Rotate all keys after employee offboarding" >> audit_report.md
+          echo "- [ ] Ensure CI/CD keys are rotated quarterly" >> audit_report.md
+          echo "" >> audit_report.md
+          
+          # Access control recommendations
+          echo "#### Access Control" >> audit_report.md
+          
+          dev_count="${{ steps.parse_keys.outputs.developers }}"
+          admin_count="${{ steps.parse_keys.outputs.administrators }}"
+          
+          if [ "$admin_count" -lt 2 ]; then
+            echo "⚠️ Only $admin_count administrator(s) configured - recommend at least 2 for redundancy" >> audit_report.md
+          fi
+          
+          if [ "$dev_count" -eq 0 ]; then
+            echo "ℹ️ No developers configured - all access through administrators" >> audit_report.md
+          fi
+          
+          echo "" >> audit_report.md
+          
+          # Best practices check
+          echo "#### Best Practices" >> audit_report.md
+          
+          # Check for README
+          if [ -f "README.md" ]; then
+            echo "✅ README.md exists" >> audit_report.md
+          else
+            echo "⚠️ Missing README.md documentation" >> audit_report.md
+          fi
+          
+          # Check for backup directory
+          if [ -d ".sops_backups" ]; then
+            echo "⚠️ Backup directory exists - ensure it's in .gitignore" >> audit_report.md
+          fi
+          
+          # Check for audit logs
+          if [ -f "offboarding_audit.log" ]; then
+            echo "✅ Offboarding audit log exists" >> audit_report.md
+          fi
+          
+          if [ -f "secret_rotation.log" ]; then
+            echo "✅ Secret rotation log exists" >> audit_report.md
+          fi
+          echo "" >> audit_report.md
+      
+      - name: Generate summary
+        run: |
+          echo "### Summary Statistics" >> audit_report.md
+          echo "" >> audit_report.md
+          echo "| Metric | Count |" >> audit_report.md
+          echo "|--------|-------|" >> audit_report.md
+          echo "| Total Keys | ${{ steps.parse_keys.outputs.total }} |" >> audit_report.md
+          echo "| Developers | ${{ steps.parse_keys.outputs.developers }} |" >> audit_report.md
+          echo "| Administrators | ${{ steps.parse_keys.outputs.administrators }} |" >> audit_report.md
+          echo "| CI/CD Keys | ${{ steps.parse_keys.outputs.ci }} |" >> audit_report.md
+          echo "" >> audit_report.md
+          echo "**Report Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> audit_report.md
+      
+      - name: Upload audit report
+        uses: actions/upload-artifact@v3
+        with:
+          name: sops-key-audit-report
+          path: audit_report.md
+          retention-days: 90
+      
+      - name: Create issue if problems found
+        if: contains(steps.parse_keys.outputs.administrators, '0') || contains(steps.parse_keys.outputs.administrators, '1')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '⚠️ SOPS Key Audit - Action Required';
+            const body = `The automated SOPS key audit has identified issues that require attention:
+            
+            - **Administrators**: ${{ steps.parse_keys.outputs.administrators }} (recommend at least 2)
+            - **Total Keys**: ${{ steps.parse_keys.outputs.total }}
+            
+            Please review the full audit report in the workflow artifacts.
+            
+            [View Workflow Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'automation']
+            });
+      
+      - name: Add to job summary
+        if: always()
+        run: |
+          cat audit_report.md >> $GITHUB_STEP_SUMMARY

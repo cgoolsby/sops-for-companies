@@ -1,0 +1,63 @@
+# SOPS and encryption related
+*.dec.yaml
+*.dec.yml
+*.plaintext
+*.decrypted
+keys.txt
+age-key.txt
+
+# Backup files
+*.bak
+*.backup
+.sops_backups/
+.sops.yaml.bak
+.sops.yaml.bak.*
+.sops.yaml.tmp
+*.yaml.bak*
+*.yaml.tmp
+
+# Logs
+*.log
+offboarding_audit.log
+secret_rotation.log
+offboarding_rotation.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+/tmp/
+*.tmp
+
+# Never commit unencrypted secrets
+secrets/**/*.yaml
+!secrets/**/*.enc.yaml
+examples/*.yaml
+!examples/*.enc.yaml
+
+# Test files
+test/
+*.test
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Private keys - CRITICAL
+*.key
+*.pem
+*.p12
+*_rsa
+*_dsa
+*_ecdsa
+*_ed25519
+AGE-SECRET-KEY-*
