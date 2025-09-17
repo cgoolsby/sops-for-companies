@@ -28,20 +28,26 @@ jobs:
         id: parse_keys
         run: |
           echo "Parsing .sops.yaml for key information..."
-          
+
           # Extract all keys with their groups
           echo "## Key Inventory" > audit_report.md
           echo "" >> audit_report.md
-          
+
           # Count keys by group
-          dev_count=$(grep -c "&.*_key age1" .sops.yaml | grep -A100 "developers:" | grep -c "age1" || echo "0")
-          admin_count=$(grep -c "&.*_key age1" .sops.yaml | grep -A100 "administrators:" | grep -c "age1" || echo "0")
-          ci_count=$(grep -c "&.*_key age1" .sops.yaml | grep -A100 "ci:" | grep -c "age1" || echo "0")
-          
+          # Find the developers section and count keys under it
+          dev_count=$(awk '/developers:.*&developers/,/^[[:space:]]*$/ {if (/- &.*_key age1/) count++} END {print count+0}' .sops.yaml)
+
+          # Find the administrators section and count keys under it
+          admin_count=$(awk '/administrators:.*&administrators/,/^[[:space:]]*$/ {if (/- &.*_key age1/) count++} END {print count+0}' .sops.yaml)
+
+          # Find the ci section and count keys under it
+          ci_count=$(awk '/ci:.*&ci/,/^[[:space:]]*$/ {if (/- &.*_key age1/) count++} END {print count+0}' .sops.yaml)
+
           echo "developers=$dev_count" >> $GITHUB_OUTPUT
           echo "administrators=$admin_count" >> $GITHUB_OUTPUT
           echo "ci=$ci_count" >> $GITHUB_OUTPUT
-          
+
+          # Count total unique keys
           total_keys=$(grep -c "&.*_key age1" .sops.yaml || echo "0")
           echo "total=$total_keys" >> $GITHUB_OUTPUT
       
@@ -209,7 +215,7 @@ jobs:
           echo "**Report Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> audit_report.md
       
       - name: Upload audit report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sops-key-audit-report
           path: audit_report.md
